@@ -68,6 +68,11 @@ class Graph:
         self.driver = GraphDatabase.driver(uri=uri, auth=(self.user, self.password))
 
     def create_tgc_constraint(self) -> None:
+        """Create a constraint on TGChannel.ch_id
+
+        :raises: ConstraintCreationFailed if constraint could not be created.
+        """
+
         with self.driver.session() as session:
             session.write_transaction(
                 self._create_tgc_constraint,
@@ -91,6 +96,9 @@ class Graph:
             )
 
     def drop_tgc_constraint(self) -> None:
+        """Drop constraint on TGChannel.ch_id
+        :raises: ConstraintCreationFailed if constraint could not be deleted.
+        """
         with self.driver.session() as session:
             session.write_transaction(
                 self._drop_tgc_constraint,
@@ -112,6 +120,13 @@ class Graph:
         return f"Graph(uri={self.uri}, user={self.user})"
 
     def create_tgchannel(self, tgchannel: TGChannel) -> None:
+        """Insert a TGChannel into the database
+        :param tgchannel: tgchannel: Instance of TGChannel class that contains all required fields
+        :raises:
+            TGChannelAlreadyExists if a channel with the same ID already exists
+            TGChannelInsertionFailed if there was an error during insertion
+        :return: TGChannel that has been inserted
+        """
         with self.driver.session() as session:
             tgchannel = session.write_transaction(
                 self._create_tgchannel,
@@ -173,6 +188,14 @@ class Graph:
         return channel_id
 
     def create_forwarded_message(self, forwarded_message: ForwardedMessage) -> None:
+        """Inserts a forwarded Telegram Message into the database
+
+        This does not check for duplicated yet and there also is no constraint on the forwarded message.
+
+        :param forwarded_message: Attributes of the Forwarded Message to be inserted
+        :raises: ForwardRelationInsertionFailed the forward relation could not be created
+        :return: Forwarded message that has been inserted
+        """
         with self.driver.session() as session:
             forwarded_msg = session.write_transaction(
                 self._create_forwarded_message,
@@ -245,14 +268,12 @@ class Graph:
     def query(self, query: str, **kwargs) -> pd.DataFrame:
         """Query the graph database.
 
-        Args:
-            query (str):
-                The Cypher query.
-            **kwargs:
-                Keyword arguments to be used in self.driver.session().run.
+        :param query: The Cypher query
+        :type query: String
+        :param **kwargs: Keyword arguments to be used in self.driver.session().run.
 
-        Returns:
-            Pandas DataFrame: The results from the database.
+        :return: The results from the database
+        :rtype: Pandas DataFrame
         """
         restart_counter = 0
         with self.driver.session() as sess:
