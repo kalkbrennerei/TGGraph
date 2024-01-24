@@ -1,44 +1,55 @@
-'''Graph database wrapper'''
+"""Graph database wrapper"""
 
 from neo4j import GraphDatabase
-from neo4j.exceptions import ServiceUnavailable, SessionExpired, TransientError, ClientError
-from dotenv import load_dotenv; load_dotenv()
+from neo4j.exceptions import (
+    ServiceUnavailable,
+    SessionExpired,
+    TransientError,
+    ClientError,
+)
+from dotenv import load_dotenv
 import os
 import pandas as pd
 import time
 import logging
 from models import TGChannel, ForwardedMessage
 
+load_dotenv()
 
 logger = logging.getLogger(__name__)
+
 
 class TGChannelInsertionFailed(Exception):
     """Raised when TGChannel couldn't be inserted into the DB"""
 
     pass
 
+
 class TGChannelAlreadyExists(Exception):
     """Raised when TGChannel already exists in the DB"""
 
     pass
+
 
 class ForwardedMessageInsertionFailed(Exception):
     """Raised when Forwarded Message couldn't be inserted into the DB"""
 
     pass
 
+
 class ConstraintCreationFailed(Exception):
     """Raised when creating unique constraint for channel id failed"""
 
     pass
 
+
 class ForwardRelationInsertionFailed(Exception):
     """Raised when Relation of Forwarded Message couldn't be inserted into the DB"""
 
-    pass    
+    pass
 
 
-#@timeout(60 * 60)
+# @timeout(60 * 60)
 def run_query_with_timeout(sess, query, **kwargs):
     with sess.begin_transaction() as tx:
         result = tx.run(query, **kwargs)
@@ -48,16 +59,15 @@ def run_query_with_timeout(sess, query, **kwargs):
 
 
 class Graph:
-    '''Graph database wrapper'''
-    def __init__(self, uri: str = 'bolt://localhost:17687'):
-        self.uri = uri
-        self.user = os.getenv('NEO4J_USER')
-        self.password = os.getenv('NEO4J_PASSWORD')
-        self.driver = GraphDatabase.driver(uri=uri,
-                                           auth=(self.user, self.password))
-        
-    def create_tgc_constraint(self) -> None:
+    """Graph database wrapper"""
 
+    def __init__(self, uri: str = "bolt://localhost:17687"):
+        self.uri = uri
+        self.user = os.getenv("NEO4J_USER")
+        self.password = os.getenv("NEO4J_PASSWORD")
+        self.driver = GraphDatabase.driver(uri=uri, auth=(self.user, self.password))
+
+    def create_tgc_constraint(self) -> None:
         with self.driver.session() as session:
             session.write_transaction(
                 self._create_tgc_constraint,
@@ -68,11 +78,11 @@ class Graph:
         # use syntax of cypher 4
         channel_id_constraint_creation = """CREATE CONSTRAINT channel_id_constraint IF NOT EXISTS
                                             ON (tgc:TGChannel) ASSERT (tgc.ch_id) IS UNIQUE"""
-        
-        # use syntax of cypher 5
-        # """CREATE CONSTRAINT channel_id_constraint IF NOT EXISTS
-        #                                     FOR (tgc:tgchannel)
-        #                                     REQUIRE (tgc.ch_id) IS UNIQUE"""
+
+        # use syntax of cypher 5 # noqa
+        # """CREATE CONSTRAINT channel_id_constraint IF NOT EXISTS # noqa
+        #                                     FOR (tgc:tgchannel) # noqa
+        #                                     REQUIRE (tgc.ch_id) IS UNIQUE""" # noqa
         try:
             tx.run(channel_id_constraint_creation)
         except Exception as e:
@@ -81,7 +91,6 @@ class Graph:
             )
 
     def drop_tgc_constraint(self) -> None:
-
         with self.driver.session() as session:
             session.write_transaction(
                 self._drop_tgc_constraint,
@@ -89,19 +98,20 @@ class Graph:
 
     @staticmethod
     def _drop_tgc_constraint(tx) -> None:
-        drop_channel_id_constraint_query = "DROP CONSTRAINT channel_id_constraint IF EXISTS"
+        drop_channel_id_constraint_query = (
+            "DROP CONSTRAINT channel_id_constraint IF EXISTS"
+        )
         try:
             tx.run(drop_channel_id_constraint_query)
         except Exception as e:
             raise ConstraintCreationFailed(
                 f"{drop_channel_id_constraint_query} raised an error: \n {e}"
-            )        
+            )
 
     def __repr__(self) -> str:
-        return f'Graph(uri={self.uri}, user={self.user})'
-    
-    def create_tgchannel(self, tgchannel: TGChannel) -> None:
+        return f"Graph(uri={self.uri}, user={self.user})"
 
+    def create_tgchannel(self, tgchannel: TGChannel) -> None:
         with self.driver.session() as session:
             tgchannel = session.write_transaction(
                 self._create_tgchannel,
@@ -109,13 +119,14 @@ class Graph:
             )
             return tgchannel
 
-
     @staticmethod
     def _create_tgchannel(
         tx,
         tgchannel: TGChannel,
     ) -> int:
-        select_tgchannel_query = "MATCH (tgc:tgchannel) where tgc.ch_id = $ch_id RETURN tgc AS tgchannel"
+        select_tgchannel_query = (
+            "MATCH (tgc:tgchannel) where tgc.ch_id = $ch_id RETURN tgc AS tgchannel"
+        )
         channel_exists = False
         ch_id = tgchannel.ch_id
 
@@ -133,14 +144,12 @@ class Graph:
             )
 
         if channel_exists:
-            raise TGChannelAlreadyExists(
-                f"Channel with id '{ch_id}' already exists."
-            )
+            raise TGChannelAlreadyExists(f"Channel with id '{ch_id}' already exists.")
 
         create_channel_query = """CREATE (ch:TGChannel) SET ch.ch_id = $ch_id,
-                                ch.description = $description, ch.level = $level, 
-                                ch.n_subscriber = $n_subscribers, ch.scam = $scam, 
-                                ch.title = $title, ch.username = $username, 
+                                ch.description = $description, ch.level = $level,
+                                ch.n_subscriber = $n_subscribers, ch.scam = $scam,
+                                ch.title = $title, ch.username = $username,
                                 ch.verified = $verified RETURN id(ch) AS id"""
         try:
             result = tx.run(
@@ -160,9 +169,8 @@ class Graph:
             raise TGChannelInsertionFailed(
                 f"{create_channel_query} raised an error: \n {e}"
             )
-        
-        return channel_id
 
+        return channel_id
 
     def create_forwarded_message(self, forwarded_message: ForwardedMessage) -> None:
         with self.driver.session() as session:
@@ -174,32 +182,7 @@ class Graph:
 
     @staticmethod
     def _create_forwarded_message(tx, forwarded_message: ForwardedMessage) -> int:
-        # currently messages with the same ID can be inserted multiple times
-        # they are assigned a different node id, but have the same msg_id
-
-        # select_fmessage_query = "MATCH (fmsg:forwarded_message) WHERE fmsg.msg_id = $msg_id AND fmsg.forwarded_from_id = $forwarded_from_id AND fmsg.ch_id = $ch_id RETURN fmsg AS forwarded_message"
-        # msg_exists = False
         msg_id = forwarded_message.msg_id
-
-        # try:
-        #     result = tx.run(
-        #         select_fmessage_query,
-        #         msg_id=msg_id,
-        #         forwarded_from_id = forwarded_message.forwarded_from_id,
-        #         ch_id = forwarded_message.ch_id,
-        #     )
-
-        #     if result and result.single():
-        #         msg_exists = True
-        # except Exception as e:
-        #     raise ForwardedMessageInsertionFailed(
-        #         f"{select_fmessage_query} raised an error: \n {e}"
-        #     )
-
-        # if msg_exists:
-        #     raise ForwardedMessageAlreadyExists(
-        #         f"Forwarded Message with id '{msg_id}' from channel '{forwarded_message.forwarded_from_id}' to channel '{forwarded_message.ch_id}' already exists."
-        #     )
 
         create_fmessage_query = """CREATE (fmsg:forwarded_message) SET fmsg.msg_id = $msg_id,
                                 fmsg.author = $author, fmsg.ch_id = $ch_id,
@@ -209,7 +192,7 @@ class Graph:
                                 fmsg.forwarded_message_date = $forwarded_message_date,
                                 fmsg.is_forwarded = $is_forwarded, fmsg.media_id = $media_id,
                                 fmsg.note = $note, fmsg.src = $src, fmsg.title = $title RETURN id(fmsg) AS id"""
-        
+
         try:
             result = tx.run(
                 create_fmessage_query,
@@ -260,7 +243,7 @@ class Graph:
             )
 
     def query(self, query: str, **kwargs) -> pd.DataFrame:
-        '''Query the graph database.
+        """Query the graph database.
 
         Args:
             query (str):
@@ -270,7 +253,7 @@ class Graph:
 
         Returns:
             Pandas DataFrame: The results from the database.
-        '''
+        """
         restart_counter = 0
         with self.driver.session() as sess:
             while True:
@@ -278,12 +261,16 @@ class Graph:
                     return run_query_with_timeout(sess, query, **kwargs)
 
                 except (TimeoutError, StopIteration):
-                    print('Timed out. Rebooting graph database...')
-                    os.system('docker container restart neo4j')
+                    print("Timed out. Rebooting graph database...")
+                    os.system("docker container restart neo4j")
                     time.sleep(5 * 60)
 
-                except (ServiceUnavailable, OSError, SessionExpired,
-                        TransientError) as e:
+                except (
+                    ServiceUnavailable,
+                    OSError,
+                    SessionExpired,
+                    TransientError,
+                ) as e:
                     raise e
                     restart_counter += 1
                     time.sleep(1)
